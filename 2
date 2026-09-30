@@ -1,0 +1,206 @@
+import math
+
+
+class Angle:
+    def __init__(self, rad=0.0):
+        # float() сработает и для чисел, и для другого объекта Angle
+        self._rad = float(rad)
+
+    # --- 1. Фабричные методы ---
+    @classmethod
+    def from_radians(cls, rad):
+        return cls(rad)
+
+    @classmethod
+    def from_degrees(cls, deg):
+        return cls(math.radians(deg))
+
+    # --- 2. Геттеры и сеттеры ---
+    def get_radians(self):
+        return self._rad
+
+    def set_radians(self, rad):
+        self._rad = float(rad)
+
+    def get_degrees(self):
+        return math.degrees(self._rad)
+
+    def set_degrees(self, deg):
+        self._rad = math.radians(deg)
+
+    # --- 3. Строки и преобразование в число ---
+    def __str__(self):
+        return f"{self.get_degrees():.1f}°"
+
+    def __repr__(self):
+        return f"Angle({self._rad:.2f})"
+
+    def __float__(self):
+        return self._rad
+
+    def __int__(self):
+        return int(self._rad)
+
+    # --- 4. Сравнение с учетом периодичности 2*pi ---
+    def norm(self):
+        # Остаток от деления на 2*pi, округленный для защиты от погрешностей
+        return round(self._rad % (2 * math.pi), 6)
+
+    def __eq__(self, other):
+        return self.norm() == Angle(other).norm()
+
+    def __ne__(self, other):
+        return self.norm() != Angle(other).norm()
+
+    def __lt__(self, other):
+        return self.norm() < Angle(other).norm()
+
+    def __le__(self, other):
+        return self.norm() <= Angle(other).norm()
+
+    def __gt__(self, other):
+        return self.norm() > Angle(other).norm()
+
+    def __ge__(self, other):
+        return self.norm() >= Angle(other).norm()
+
+    # --- 5. Арифметика ---
+    def __add__(self, other):
+        return Angle(self._rad + float(other))
+
+    def __radd__(self, other):
+        return Angle(float(other) + self._rad)
+
+    def __sub__(self, other):
+        return Angle(self._rad - float(other))
+
+    def __rsub__(self, other):
+        return Angle(float(other) - self._rad)
+
+    def __mul__(self, number):
+        return Angle(self._rad * number)
+
+    def __rmul__(self, number):
+        return Angle(number * self._rad)
+
+    def __truediv__(self, number):
+        return Angle(self._rad / number)
+
+
+class AngleRange:
+    def __init__(self, start, end, inc_start=True, inc_end=True):
+        self.start = Angle(start)
+        self.end = Angle(end)
+        self.inc_start = inc_start
+        self.inc_end = inc_end
+
+    # --- 1. Строки и длина ---
+    def __str__(self):
+        left = "[" if self.inc_start else "("
+        right = "]" if self.inc_end else ")"
+        return f"{left}{self.start}, {self.end}{right}"
+
+    def __repr__(self):
+        return str(self)
+
+    def __abs__(self):
+        # Длина промежутка в радианах
+        return float(self.end) - float(self.start)
+
+    # --- 2. Сравнение промежутков ---
+    def __eq__(self, other):
+        return (float(self.start) == float(other.start) and
+                float(self.end) == float(other.end) and
+                self.inc_start == other.inc_start and
+                self.inc_end == other.inc_end)
+
+    def __lt__(self, other):
+        return abs(self) < abs(other)
+
+    def __le__(self, other):
+        return abs(self) <= abs(other)
+
+    def __gt__(self, other):
+        return abs(self) > abs(other)
+
+    def __ge__(self, other):
+        return abs(self) >= abs(other)
+
+    # --- 3. Оператор in (проверка вхождения) ---
+    def __contains__(self, item):
+        s, e = float(self.start), float(self.end)
+
+        # Если проверяем другой промежуток
+        if isinstance(item, AngleRange):
+            s2, e2 = float(item.start), float(item.end)
+            left_ok = (s2 > s) or (s2 == s and (self.inc_start or not item.inc_start))
+            right_ok = (e2 < e) or (e2 == e and (self.inc_end or not item.inc_end))
+            return left_ok and right_ok
+
+        # Если проверяем угол или число
+        val = float(item)
+        left_ok = (val >= s) if self.inc_start else (val > s)
+        right_ok = (val <= e) if self.inc_end else (val < e)
+        return left_ok and right_ok
+
+    # --- 4. Сложение и вычитание промежутков ---
+    def __add__(self, other):
+        # Сортируем два промежутка по началу
+        r1, r2 = sorted([self, other], key=lambda r: float(r.start))
+        s1, e1 = float(r1.start), float(r1.end)
+        s2, e2 = float(r2.start), float(r2.end)
+
+        # Если между ними разрыв — возвращаем оба по отдельности
+        if e1 < s2 or (e1 == s2 and not (r1.inc_end or r2.inc_start)):
+            return [r1, r2]
+
+        # Иначе склеиваем в один общий промежуток
+        new_inc_s = r1.inc_start or (s1 == s2 and r2.inc_start)
+        if e1 > e2:
+            new_end, new_inc_e = r1.end, r1.inc_end
+        elif e2 > e1:
+            new_end, new_inc_e = r2.end, r2.inc_end
+        else:
+            new_end, new_inc_e = r1.end, (r1.inc_end or r2.inc_end)
+
+        return [AngleRange(r1.start, new_end, new_inc_s, new_inc_e)]
+
+    def __sub__(self, other):
+        s1, e1 = float(self.start), float(self.end)
+        s2, e2 = float(other.start), float(other.end)
+
+        # Если не пересекаются — ничего не отрезаем
+        if e2 < s1 or s2 > e1:
+            return [self]
+
+        res = []
+        # Остаток слева
+        if s2 > s1:
+            res.append(AngleRange(s1, s2, self.inc_start, not other.inc_start))
+        # Остаток справа
+        if e2 < e1:
+            res.append(AngleRange(e2, e1, not other.inc_end, self.inc_end))
+        return res
+
+
+# ==========================================
+# ПРОВЕРКА РАБОТЫ
+# ==========================================
+if __name__ == "__main__":
+    a1 = Angle.from_degrees(30)
+    a2 = Angle.from_degrees(390)  # 360 + 30
+    print("Углы:", a1, a2)
+    print("Равны с учетом периода?", a1 == a2)
+    print("Сложение:", a1 + Angle.from_degrees(60))
+    print("Умножение:", a1 * 3)
+
+    r1 = AngleRange(Angle.from_degrees(0), Angle.from_degrees(90))                # [0°, 90°]
+    r2 = AngleRange(Angle.from_degrees(45), Angle.from_degrees(180), False, True) # (45°, 180°]
+    r3 = AngleRange(Angle.from_degrees(20), Angle.from_degrees(50))               # [20°, 50°]
+
+    print("\nПромежутки:", r1, "и", r2)
+    print("Длина r1 в радианах:", round(abs(r1), 2))
+    print("Угол 30° внутри r1?", a1 in r1)
+    print("Промежуток r3 внутри r1?", r3 in r1)
+    print("Сложение r1 + r2:", r1 + r2)
+    print("Вычитание r1 - r3:", r1 - r3)
